@@ -68,7 +68,7 @@ T_sets = {"cold": trimf(T_range, 0, 0, 18), "mild": trimf(T_range, 12, 22, 32), 
 RH_sets = {"dry": trimf(RH_range, 10, 10, 40), "comfortable": trimf(RH_range, 30, 50, 70), "humid": trimf(RH_range, 60, 90, 90)}
 V_sets = {"low": trimf(V_range, 0, 0, 45), "medium": trimf(V_range, 25, 50, 75), "high": trimf(V_range, 55, 100, 100)}
 
-
+# use interpolation to find the membership degree of a crisp value in a fuzzy set
 def degree(universe, membership, value):
     """Membership degree of one crisp value."""
     return float(np.interp(value, universe, membership))
@@ -76,13 +76,13 @@ def degree(universe, membership, value):
 
 def ventilation(temperature, humidity):
     # 1. Fuzzify: how much does each reading belong to each set?
-    t = {name: degree(T_range, mf, temperature) for name, mf in T_sets.items()}
-    h = {name: degree(RH_range, mf, humidity) for name, mf in RH_sets.items()}
+    t = {name: degree(T_range, mf, temperature) for name, mf in T_sets.items()} #mf = membership function
+    h = {name: degree(RH_range, mf, humidity) for name, mf in RH_sets.items()} 
     # 2. Fire the rules: AND is min; rules with the same conclusion combine with max.
     low = max(min(t["cold"], h["dry"]), min(t["cold"], h["comfortable"]))
     medium = max(min(t["mild"], h["dry"]), min(t["mild"], h["comfortable"]), min(t["cold"], h["humid"]))
     high = max(t["hot"], h["humid"])
-    # 3. Clip each output set at its rule strength and take the union.
+    # 3. Clip each output set at its rule strength and take the union. @defuzzification: the process of producing a quantifiable result in fuzzy logic, given fuzzy sets and corresponding membership degrees.
     output = np.maximum.reduce([
         np.minimum(low, V_sets["low"]),
         np.minimum(medium, V_sets["medium"]),
@@ -114,17 +114,17 @@ print("Try it yourself: 28 deg C, 60 % humidity ->", round(ventilation(28, 60), 
 # ---------------------------------------------------------------------------
 print("\n=== Question 3: Validate the rule base ===")
 fixed = pd.DataFrame({"T_C": [10, 20, 35, 25, 40], "RH_pct": [30, 50, 50, 80, 80],
-                      "expected": ["low", "medium", "high", "high", "high"]})
+                      "expected": ["low", "medium", "high", "high", "high"]}) #expected results for testing the fuzzy controller
 fixed["ventilation_pct"] = [ventilation(t, h) for t, h in zip(fixed.T_C, fixed.RH_pct)]
 fixed.to_csv(RESULTS / "fuzzy_fixed_points.csv", index=False)
 print(fixed.round(1))
 
 temperatures, humidities = np.linspace(0, 45, 46), np.linspace(10, 90, 41)
-surface = np.array([[ventilation(t, h) for t in temperatures] for h in humidities])
+surface = np.array([[ventilation(t, h) for t in temperatures] for h in humidities]) #ventelitaion surface percentage for each combination of temperature and humidity
 
 fig, ax = plt.subplots(figsize=(7, 4.5))
 contour = ax.contourf(temperatures, humidities, surface, levels=15)
-fig.colorbar(contour, label="Ventilation demand (%)")
+fig.colorbar(contour, label="Ventilation demand (%)") # degree of need for ventilation based on temperature and humidity
 ax.set(xlabel="Temperature (deg C)", ylabel="Relative humidity (%)", title="Fuzzy control surface")
 plt.tight_layout()
 plt.savefig(RESULTS / "fuzzy_control_surface.png", dpi=160)
@@ -136,17 +136,17 @@ plt.close()
 # ---------------------------------------------------------------------------
 print("\n=== Question 4: Prepare the ANFIS task ===")
 task = df[["CO(GT)", "PT08.S1(CO)", "PT08.S2(NMHC)"]].dropna()      # complete rows only
-X = task[["PT08.S1(CO)", "PT08.S2(NMHC)"]].to_numpy()
+X = task[["PT08.S1(CO)", "PT08.S2(NMHC)"]].to_numpy() #getting the length of the features (2 features: PT08.S1(CO) and PT08.S2(NMHC))
 y = task["CO(GT)"].to_numpy()
 
-train, rest = train_test_split(np.arange(len(task)), test_size=0.30, random_state=42)
-val, test = train_test_split(rest, test_size=0.50, random_state=42)
-split = pd.Series("train", index=task.index, name="split")
-split.iloc[val], split.iloc[test] = "validation", "test"
+train, rest = train_test_split(np.arange(len(task)), test_size=0.30, random_state=42) #test = validation = rest = 0.3
+val, test = train_test_split(rest, test_size=0.50, random_state=42) #divide here 
+split = pd.Series("train", index=task.index, name="split") #row 1 train 
+split.iloc[val], split.iloc[test] = "validation", "test" 
 split.rename_axis("source_row").to_csv(RESULTS / "split.csv")
 
 scaler = StandardScaler().fit(X[train])           # training statistics only: no leakage
-Xs = scaler.transform(X)
+Xs = scaler.transform(X) #scaling done when data is used for better performance of the model. It standardizes the features by removing the mean and scaling to unit variance.
 print({"usable_rows": len(task), "train": len(train), "validation": len(val), "test": len(test)})
 
 
@@ -166,7 +166,7 @@ class SugenoANFIS:
     # Fuzzy Layer 1 to 3
     def _weights(self, X, theta):
         """Layers 1-3: memberships -> rule strengths -> normalised strengths."""
-        n_features = X.shape[1]
+        n_features = X.shape[1] 
         centers = theta[: n_features * self.n_mfs].reshape(n_features, self.n_mfs) # Gaussian bell curves. he code reshapes this flat array into a grid matrix (n_features * n_mfs)
         widths = np.exp(theta[n_features * self.n_mfs:]).reshape(n_features, self.n_mfs) 
         # The second half holds the spread (standard deviation) of the curves. The code uses np.exp() to guarantee that these widths stay positive numbers during training, since a negative width would break the math formulas.
@@ -188,6 +188,7 @@ class SugenoANFIS:
         # @: This is Python's symbol for matrix multiplication.
         # Z.T: This is the transpose of matrix Z (flipping rows into columns)
 
+#passed the result to here
     # Training
     def fit(self, X, y):
         n_features = X.shape[1]
