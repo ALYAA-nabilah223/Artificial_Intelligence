@@ -53,15 +53,15 @@ plt.close()
 print("\n=== Question 2: Build the fuzzy controller ===")
 
 
-def trimf(x, a, b, c):
+def trimf(x, a, b, c): #x range, a b c is the side of the triangle. a is the left foot, b is the peak, c is the right foot.
     """Triangle with feet a and c and peak b. a == b or b == c makes a shoulder."""
     x = np.asarray(x, dtype=float)
-    left = np.ones_like(x) if a == b else np.clip((x - a) / (b - a), 0, 1)
-    right = np.ones_like(x) if b == c else np.clip((c - x) / (c - b), 0, 1)
-    return np.minimum(left, right)
+    left = np.ones_like(x) if a == b else np.clip((x - a) / (b - a), 0, 1) #left shoulder
+    right = np.ones_like(x) if b == c else np.clip((c - x) / (c - b), 0, 1) #right shoulder
+    return np.minimum(left, right) #perfect triangle, or left/right shoulder if a==b or b==c
 
 
-T_range, RH_range, V_range = np.linspace(0, 45, 451), np.linspace(10, 90, 401), np.linspace(0, 100, 501)
+T_range, RH_range, V_range = np.linspace(0, 45, 451), np.linspace(10, 90, 401), np.linspace(0, 100, 501) #ranges for temperature, relative humidity, and ventilation demand
 
 # Try this: change the 26 in "hot" to 20, then rerun Question 3 and compare.
 T_sets = {"cold": trimf(T_range, 0, 0, 18), "mild": trimf(T_range, 12, 22, 32), "hot": trimf(T_range, 26, 45, 45)}
